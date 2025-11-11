@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Book Inventory — ISBN Scanner → eBay CSV</title>
+  <style>
+    :root{ --bg:#0b1020; --fg:#e8eef9; --muted:#a9b3c9; --card:#121936; --accent:#6ea8fe; --good:#90ee90; --bad:#ff8080; }
+    html,body{height:100%}
+    body{margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,"Helvetica Neue",Arial; background:var(--bg); color:var(--fg)}
+    header{position:sticky; top:0; background:linear-gradient(180deg,var(--bg),rgba(11,16,32,.7)); backdrop-filter:blur(6px); z-index:10}
+    .wrap{max-width:1100px; margin:0 auto; padding:16px}
+    h1{font-size:clamp(22px,3vw,32px); margin:8px 0 4px}
+    p.sub{margin:0 0 10px; color:var(--muted)}
+    .grid{display:grid; grid-template-columns:1.1fr .9fr; gap:16px}
+    .card{background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:14px; box-shadow:0 8px 28px rgba(0,0,0,.25)}
+    .controls{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    button,select,input,textarea{border-radius:12px; border:1px solid rgba(255,255,255,.15); background:#0f1530; color:var(--fg); padding:10px 12px; font-size:15px}
+    button{cursor:pointer}
+    button.primary{background:var(--accent); color:#09122b; border-color:transparent; font-weight:600}
+    button.ghost{background:transparent}
+    button.small{padding:8px 10px; font-size:13px}
+    #video{width:100%; height:auto; border-radius:12px; background:#000}
+    .row{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
+    label{font-size:12px; color:var(--muted)}
+    .field{display:flex; flex-direction:column; gap:6px}
+    table{width:100%; border-collapse:collapse; font-size:14px}
+    th,td{padding:10px; border-bottom:1px solid rgba(255,255,255,.08); vertical-align:top}
+    th{position:sticky; top:0; background:var(--card)}
+    tr:hover{background:rgba(255,255,255,.04)}
+    .pill{display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid rgba(255,255,255,.1)}
+    .ok{background:rgba(144,238,144,.15); border-color:rgba(144,238,144,.4)}
+    .err{background:rgba(255,128,128,.15); border-color:rgba(255,128,128,.45)}
+    .img{width:40px; height:60px; object-fit:cover; border-radius:6px; background:#000}
+    .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    .hint{font-size:12px; color:var(--muted)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>Book Inventory — ISBN Scanner → eBay CSV</h1>
+      <p class="sub">Scan ISBNs with your webcam/phone or a USB scanner. Auto‑fills via Open Library. Exports an eBay‑ready CSV with shelving Location.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="grid">
+      <section class="card">
+        <div class="controls">
+          <button id="startBtn" class="primary">Start Camera Scan</button>
+          <button id="stopBtn" class="ghost">Stop</button>
+          <select id="cameraSelect" title="Camera"></select>
+          <span id="scanStatus" class="pill">Idle</span>
+        </div>
+        <video id="video" muted playsinline></video>
+        <div class="footer">
+          <span class="hint">Tip: A USB barcode scanner also works. Click the ISBN box below, scan, then press Enter.</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3 style="margin-top:0">Current Scan / Manual Add</h3>
+        <div class="row">
+          <div class="field">
+            <label for="isbnInput">ISBN</label>
+            <input id="isbnInput" class="mono" placeholder="Scan or paste ISBN and press Enter" />
+          </div>
+          <div class="field">
+            <label for="skuInput">SKU (optional)</label>
+            <input id="skuInput" placeholder="Your internal ID" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <div class="field">
+            <label>Title</label>
+            <input id="titleInput" />
+          </div>
+          <div class="field">
+            <label>Author</label>
+            <input id="authorInput" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <div class="field">
+            <label>Publisher</label>
+            <input id="publisherInput" />
+          </div>
+          <div class="field">
+            <label>Year</label>
+            <input id="yearInput" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <div class="field">
+            <label>Condition</label>
+            <select id="conditionInput">
+              <option>Like New</option>
+              <option>Very Good</option>
+              <option>Good</option>
+              <option>Acceptable</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Price (USD)</label>
+            <input id="priceInput" type="number" step="0.01" />
+          </div>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label>Description</label>
+          <textarea id="descInput" rows="3" placeholder="Notes, defects, highlights, etc."></textarea>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <div class="field">
+            <label>Image URL</label>
+            <input id="imgInput" placeholder="Auto from Open Library when available" />
+          </div>
+          <div class="field">
+            <label>Location (shelf/bin)</label>
+            <input id="locationInput" placeholder="e.g., A3-Bin2 or Closet" />
+          </div>
+        </div>
+        <div class="field" style="align-items:flex-end; margin-top:6px">
+          <button id="addBtn" class="primary">Add to Inventory</button>
+        </div>
+        <div id="lookupMsg" class="hint" style="margin-top:8px"></div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:16px">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap">
+        <h3 style="margin:0">Inventory (<span id="count">0</span>)</h3>
+        <div class="controls">
+          <button id="exportCsvBtn" class="primary">Export eBay CSV</button>
+          <button id="clearBtn" class="ghost">Clear All</button>
+        </div>
+      </div>
+
+      <div class="hint" style="margin:6px 0 10px">Inline‑editable: click any cell (except ISBN) to edit. Changes auto‑save.</div>
+      <div style="overflow:auto; max-height:420px">
+        <table id="table">
+          <thead>
+            <tr>
+              <th>Cover</th>
+              <th>Title</th>
+              <th>Author</th>
+              <th>ISBN</th>
+              <th>Condition</th>
+              <th>Price</th>
+              <th>Qty</th>
+              <th>SKU</th>
+              <th>Location</th>
+              <th>Description</th>
+              <th>ImageURL</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        CSV columns: Title, ISBN, Price, Quantity, Condition, Description, PictureURL, SKU, Location (for your shelving). Adjust after export if needed.
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0"></script>
+  <script>
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+  const state = { inventory: [], codeReader: null, currentStream: null };
+
+  function load(){
+    try{ state.inventory = JSON.parse(localStorage.getItem('books')||'[]'); }
+    catch{ state.inventory = []; }
+    render();
+  }
+  function save(){ localStorage.setItem('books', JSON.stringify(state.inventory)); renderCount(); }
+
+  function renderCount(){ $('#count').textContent = state.inventory.length; }
+  function render(){
+    const tbody = $('#tbody');
+    tbody.innerHTML = '';
+    for(const [i,b] of state.inventory.entries()){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><img class="img" src="${escapeHtml(b.img||'')}" onerror="this.src=''"/></td>
+        <td contenteditable oninput="edit(${i},'title',this.textContent)">${escapeHtml(b.title||'')}</td>
+        <td contenteditable oninput="edit(${i},'author',this.textContent)">${escapeHtml(b.author||'')}</td>
+        <td class="mono">${escapeHtml(b.isbn||'')}</td>
+        <td>
+          <select onchange="edit(${i},'condition',this.value)">
+            ${['Like New','Very Good','Good','Acceptable'].map(c=>`<option ${c===b.condition?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </td>
+        <td contenteditable oninput="edit(${i},'price',this.textContent)">${escapeHtml(b.price||'')}</td>
+        <td contenteditable oninput="edit(${i},'qty',this.textContent)">${escapeHtml(b.qty||'1')}</td>
+        <td contenteditable oninput="edit(${i},'sku',this.textContent)">${escapeHtml(b.sku||'')}</td>
+        <td contenteditable oninput="edit(${i},'location',this.textContent)">${escapeHtml(b.location||'')}</td>
+        <td contenteditable oninput="edit(${i},'desc',this.textContent)">${escapeHtml(b.desc||'')}</td>
+        <td contenteditable oninput="edit(${i},'img',this.textContent)" class="mono">${escapeHtml(b.img||'')}</td>
+        <td><button class="small" onclick="del(${i})">Delete</button></td>`;
+      tbody.appendChild(tr);
+    }
+    renderCount();
+  }
+  function escapeHtml(s=''){ return s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+  window.edit = (i,k,v)=>{ state.inventory[i][k] = k==='price' ? String(Number(v||0).toFixed(2)) : v; save(); };
+  window.del = i=>{ state.inventory.splice(i,1); save(); render(); };
+
+  async function lookupISBN(isbn){
+    isbn = cleanISBN(isbn); if(!isbn){ setLookupMsg(''); return null; }
+    setLookupMsg('Looking up…');
+    try{
+      const res = await fetch(`https://openlibrary.org/isbn/${isbn}.json`);
+      if(!res.ok){ setLookupMsg('No match found. Fill fields manually.'); return null; }
+      const data = await res.json();
+      let author = '';
+      if(Array.isArray(data.authors) && data.authors.length){
+        try{
+          const ares = await fetch(`https://openlibrary.org${data.authors[0].key}.json`);
+          if(ares.ok){ const a = await ares.json(); author = a.name||''; }
+        }catch{}
+      }
+      const coverId = data.covers && data.covers[0];
+      const img = coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : '';
+      const title = data.title || '';
+      const publisher = (data.publishers && data.publishers[0]) || '';
+      const year = (data.publish_date || '').match(/\d{4}/)?.[0] || '';
+      setLookupMsg('Found ✓');
+      return {title, author, publisher, year, img};
+    }catch(e){
+      console.error(e); setLookupMsg('Lookup error. You can still add manually.'); return null;
+    }
+  }
+  function setLookupMsg(msg){ const el = $('#lookupMsg'); el.textContent = msg; el.className = 'hint ' + (msg.includes('✓')? 'ok' : msg? 'err':'' ); }
+  function cleanISBN(s){ return (s||'').replace(/[^0-9Xx]/g,'').toUpperCase(); }
+
+  async function addFromInputs(){
+    const isbn = cleanISBN($('#isbnInput').value);
+    if(!isbn){ alert('ISBN required'); return; }
+
+    let {value: title} = $('#titleInput');
+    let {value: author} = $('#authorInput');
+    let {value: publisher} = $('#publisherInput');
+    let {value: year} = $('#yearInput');
+    let {value: condition} = $('#conditionInput');
+    let price = $('#priceInput').value ? Number($('#priceInput').value).toFixed(2) : '';
+    let desc = $('#descInput').value;
+    let img = $('#imgInput').value;
+    let sku = $('#skuInput').value;
+    let location = $('#locationInput').value;
+
+    if(!title || !author || !img){
+      const meta = await lookupISBN(isbn);
+      if(meta){
+        title = title || meta.title; author = author || meta.author; img = img || meta.img; publisher = publisher || meta.publisher; year = year || meta.year;
+        fillInputs({title,author,publisher,year,img});
+      }
+    }
+
+    const book = {isbn, title, author, publisher, year, condition, price, desc, img, sku, location, qty:'1'};
+    state.inventory.unshift(book);
+    save(); render(); clearInputs(true);
+  }
+
+  function clearInputs(keepCamera=false){
+    for(const id of ['isbnInput','titleInput','authorInput','publisherInput','yearInput','priceInput','descInput','imgInput','skuInput','locationInput']){
+      const el = document.getElementById(id); el.value = '';
+    }
+    setLookupMsg(''); if(!keepCamera) stopCamera();
+  }
+  function fillInputs(o){
+    if(o.title) $('#titleInput').value = o.title;
+    if(o.author) $('#authorInput').value = o.author;
+    if(o.publisher) $('#publisherInput').value = o.publisher;
+    if(o.year) $('#yearInput').value = o.year;
+    if(o.img) $('#imgInput').value = o.img;
+  }
+
+  function toCsvRow(vals){ return vals.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(','); }
+  function exportCsv(){
+    const headers = ['Title','ISBN','Price','Quantity','Condition','Description','PictureURL','SKU','Location'];
+    const rows = [headers.join(',')];
+    for(const b of state.inventory){
+      rows.push(toCsvRow([
+        b.title||'', b.isbn||'', b.price||'', b.qty||'1', b.condition||'', b.desc||'', b.img||'', b.sku||'', b.location||''
+      ]));
+    }
+    const blob = new Blob([rows.join('\n')], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'books-ebay.csv';
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  async function listCams(){
+    try{
+      const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+      const sel = $('#cameraSelect');
+      sel.innerHTML = devices.map(d=>`<option value="${d.deviceId}">${d.label || 'Camera ' + d.deviceId.slice(0,6)}</option>`).join('');
+    }catch(e){ console.warn('No cameras?', e); }
+  }
+  async function startCamera(){
+    if(!state.codeReader){ state.codeReader = new ZXing.BrowserMultiFormatReader(); }
+    $('#scanStatus').textContent = 'Starting…';
+    await listCams();
+    const deviceId = $('#cameraSelect').value || undefined;
+    try{
+      const result = await state.codeReader.decodeFromVideoDevice(deviceId, 'video', (res, err)=>{
+        if(res){
+          $('#scanStatus').textContent = 'Scanned ✓';
+          const code = res.text.trim();
+          if(/^[0-9xX\-\s]+$/.test(code)){
+            $('#isbnInput').value = code;
+            onIsbnEntered(code);
+          }
+        } else if(err && !(err instanceof ZXing.NotFoundException)){
+          console.warn(err);
+        }
+      });
+      $('#scanStatus').textContent = 'Scanning…';
+      state.currentStream = result?.video?.srcObject || null;
+    }catch(e){ $('#scanStatus').textContent = 'Camera error'; alert('Could not start camera: '+e.message); }
+  }
+  function stopCamera(){
+    try{ state.codeReader?.reset(); }catch{}
+    if(state.currentStream){
+      state.currentStream.getTracks().forEach(t=>t.stop());
+      state.currentStream = null;
+    }
+    $('#scanStatus').textContent = 'Idle';
+  }
+
+  async function onIsbnEntered(isbn){
+    isbn = cleanISBN(isbn);
+    if(!isbn) return;
+    const meta = await lookupISBN(isbn);
+    if(meta){ fillInputs(meta); }
+  }
+
+  $('#startBtn').addEventListener('click', startCamera);
+  $('#stopBtn').addEventListener('click', stopCamera);
+  $('#addBtn').addEventListener('click', addFromInputs);
+  $('#exportCsvBtn').addEventListener('click', exportCsv);
+  $('#clearBtn').addEventListener('click', ()=>{ if(confirm('Clear all inventory?')){ state.inventory = []; save(); render(); }});
+  $('#isbnInput').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); onIsbnEntered(e.target.value); }});
+  document.addEventListener('keydown', e=>{ if((e.ctrlKey||e.metaKey) && e.key==='Enter'){ addFromInputs(); }});
+
+  load();
+  </script>
+</body>
+</html>
